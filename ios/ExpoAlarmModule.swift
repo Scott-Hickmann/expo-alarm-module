@@ -42,7 +42,8 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
 
     @objc(set:withResolver:withRejecter:)
     func set(alarm: NSDictionary, resolve:RCTPromiseResolveBlock, reject:RCTPromiseRejectBlock) -> Void {
-        let alarmToUse = Alarm(dictionary: alarm as! NSMutableDictionary);
+        let alarmToUse = Alarm(dictionary: NSMutableDictionary(dictionary: alarm));
+
 
         manager.schedule(alarmToUse);    
 
@@ -113,10 +114,27 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         resolve(manager.getCurrentPlayingAlarm())
     }
 
+    @objc(playAlarm:withResolver:withRejecter:)
+    func playAlarm(_ uid: String, resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) -> Void {
+        // Added verbose logging and safety stop to prevent overlapping audio
+        print("[ExpoAlarmModule] playAlarm called for uid=\(uid)")
+        // Stop any existing alarm sound before starting a new one
+        manager.stop()
+
+        // Ensure current alarm is marked playing
+        manager.setCurrentPlayingAlarm(uid)
+
+        // Play and loop the alarm sound
+        self.playSound("bell")
+
+        resolve(nil)
+    }
 
     // The method will be called on the delegate only if the application is in the foreground. If the method is not implemented or the handler is not called in a timely manner then the notification will not be presented. The application can choose to have the notification presented as a sound, badge, alert and/or in the notification list. This decision should be based on whether the information in the notification is otherwise visible to the user.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        
+        // Verbose logging for diagnostic purposes
+        print("[ExpoAlarmModule] willPresent received notification: \(notification.request.identifier)")
+
         //show an alert window
         let alertController = UIAlertController(title: "Alarm", message: nil, preferredStyle: .alert)
         let userInfo = notification.request.content.userInfo
@@ -124,8 +142,14 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             let snoozeEnabled = userInfo["snooze"] as? Bool,
             let soundName = userInfo["soundName"] as? String,
             let uidStr = userInfo["uid"] as? String
-        else {return}
-        
+        else {
+            completionHandler([])
+            return
+        }
+
+        // Stop any existing audio before starting a new one to avoid overlaps
+        manager.stop()
+
         manager.setCurrentPlayingAlarm(uidStr)
         playSound(soundName)
         //schedule notification for snooze
@@ -145,10 +169,14 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
         }
         
         alertController.addAction(stopOption)
+
+        // Do NOT include `.sound` here to prevent the system from playing the notification
+        // sound on top of our custom looping playback. This eliminates the "double sound"
+        // and ensures that calling manager.stop() will silence the alarm immediately.
         if #available(iOS 14.0, *) {
-            completionHandler(.list)
+            completionHandler([.list])
         } else {
-            completionHandler(.alert)
+            completionHandler([.alert])
         }
     }
     
@@ -171,10 +199,19 @@ class ExpoAlarmModule: NSObject, UNUserNotificationCenterDelegate, AVAudioPlayer
             notificationScheduler.setNotificationForSnooze(ringtoneName: soundName, snoozeMinute: 9, uid: uid)
             break
         case Identifier.stopActionIdentifier:
-            // notification fired when app in background, ok button clicked
-            let alarms = Store.shared.alarms
+            // notification fired when app in background, stop action clicked
+            // stop any playing alarm sound
+            manager.stop()
+            // clear current playing alarm state
+            manager.setCurrentPlayingAlarm(nil)
+            // cancel any pending notification for this alarm
+            notificationScheduler.cancelNotification(ByUUIDStr: uid)
             break
         default:
+            // User tapped the notification itself to open the app
+            manager.setCurrentPlayingAlarm(uid)
+            // Start native looping playback of the alarm sound
+            self.playSound(soundName)
             break
         }
 

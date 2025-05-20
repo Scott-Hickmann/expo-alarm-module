@@ -20,17 +20,20 @@ const ExpoAlarmModule = NativeModules.ExpoAlarmModule
     );
 
 async function scheduleAlarm(alarm: AlarmSettings) {
+  console.log('[expo-alarm-module] scheduleAlarm called with', alarm);
   let alarmToUse: Alarm = new Alarm(alarm);
+  console.log('[expo-alarm-module] Alarm object created:', alarmToUse);
 
   if (alarmToUse.day instanceof Date) {
     alarmToUse.day = alarmToUse.day.toJSON();
   }
-
+  console.log(`[expo-alarm-module] Scheduling on ${Platform.OS} for day: ${alarmToUse.day}`);
   if (Platform.OS === 'ios') {
     await ExpoAlarmModule.set(alarmToUse);
   } else if (Platform.OS === 'android') {
     await ExpoAlarmModule.set(alarmToUse.toAndroid());
   }
+  console.log('[expo-alarm-module] scheduleAlarm completed for uid:', alarmToUse.uid);
 }
 
 async function enableAlarm(uid: string) {
@@ -101,9 +104,14 @@ async function getAlarmState() {
   return ExpoAlarmModule.getState();
 }
 
+async function playAlarm(uid: string): Promise<void> {
+  console.log('[expo-alarm-module] playAlarm called for', uid);
+  await ExpoAlarmModule.playAlarm(uid);
+}
+
 function multiply(a: number, b: number): Promise<number> {
   return ExpoAlarmModule.multiply(a, b);
 }
 
 export default Alarm;
-export { scheduleAlarm, enableAlarm, disableAlarm, stopAlarm, snoozeAlarm, removeAlarm, updateAlarm, removeAllAlarms, getAllAlarms, getAlarm, getAlarmState, multiply };
+export { scheduleAlarm, enableAlarm, disableAlarm, stopAlarm, snoozeAlarm, removeAlarm, updateAlarm, removeAllAlarms, getAllAlarms, getAlarm, getAlarmState, multiply, playAlarm };

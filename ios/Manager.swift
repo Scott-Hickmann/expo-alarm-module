@@ -58,6 +58,7 @@ class Manager {
     }
 
     func stop() {
+        print("[Manager] stop() invoked – stopping current alarm sound and vibration")
         setCurrentPlayingAlarm(nil)
         ExpoAlarmModule.audioPlayer?.stop()
         AudioServicesRemoveSystemSoundCompletion(kSystemSoundID_Vibrate)

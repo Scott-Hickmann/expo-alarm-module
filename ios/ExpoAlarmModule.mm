@@ -38,6 +38,10 @@ RCT_EXTERN_METHOD(removeAll:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(getState:(RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(playAlarm:(NSString)uid
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+
 
 + (BOOL)requiresMainQueueSetup
 {

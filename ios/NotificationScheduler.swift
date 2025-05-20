@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import UserNotifications
+import AVFoundation
 
 class NotificationScheduler : NotificationSchedulerDelegate
 {
@@ -69,20 +70,19 @@ class NotificationScheduler : NotificationSchedulerDelegate
     
     private func getNotificationDates(baseDate date: Date) -> [Date]
     {
-        var notificationDates: [Date] = [Date]()
+        var notificationDates: [Date] = [] // initialize empty array to avoid unintended immediate schedules
         let calendar = Calendar(identifier: Calendar.Identifier.gregorian)
         let now = Date()
         let flags: NSCalendar.Unit = [NSCalendar.Unit.weekday, NSCalendar.Unit.weekdayOrdinal, NSCalendar.Unit.day]
         let dateComponents = (calendar as NSCalendar).components(flags, from: date)
         
-        //scheduling date is eariler than current date
+        // scheduling date is earlier than current date
         if date < now {
-            //plus one day, otherwise the notification will be fired righton
             notificationDates.append((calendar as NSCalendar).date(byAdding: NSCalendar.Unit.day, value: 1, to: date, options:.matchStrictly)!)
         } else {
             notificationDates.append(date)
         }
-        
+        print("[NotificationScheduler] getNotificationDates: baseDate=\(date), now=\(now), dates=\(notificationDates)")
         return notificationDates
     }
     
@@ -93,28 +93,37 @@ class NotificationScheduler : NotificationSchedulerDelegate
     }
     
     func setNotification(alarm: Alarm) {
+        print("[NotificationScheduler] setNotification called for alarm uid=\(alarm.uid), date=\(alarm.date)")
         let datesForNotification = getNotificationDates(baseDate: alarm.date)
+        // Load sound duration from bundle
+        guard let soundURL = Bundle.main.url(forResource: "bell", withExtension: "mp3") else {
+            print("[NotificationScheduler] Could not find bell.mp3 in bundle")
+            return
+        }
+        let asset = AVURLAsset(url: soundURL)
+        let duration = CMTimeGetSeconds(asset.duration)
+        print("[NotificationScheduler] bell.mp3 duration: \(duration) seconds")
         
         for d in datesForNotification {
-            let notificationContent = UNMutableNotificationContent()
-            notificationContent.title = alarm.title
-            notificationContent.body = alarm.description
-            notificationContent.categoryIdentifier = alarm.snoozeEnabled ? Identifier.snoozeAlarmCategoryIndentifier
-                                                                   : Identifier.alarmCategoryIndentifier
-            notificationContent.sound = UNNotificationSound(named: UNNotificationSoundName("bell.mp3"))
-            notificationContent.userInfo = ["snooze" : alarm.snoozeEnabled, "uid": alarm.uid, "soundName": "bell"]
-            
-            // make dataComponents only contain [weekday, hour, minute] component to make it repeat weakly
-            let dateComponents = Calendar.current.dateComponents([.weekday,.hour,.minute], from: d)
-            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-            let request = UNNotificationRequest(identifier: alarm.uid,
-                                                content: notificationContent,
-                                                trigger: trigger)
-
-            // schedule notification by adding request to notification center
-            UNUserNotificationCenter.current().add(request) { error in
-                if let e = error {
-                    print(e.localizedDescription)
+            for index in 0..<20 {
+                let fireDate = d.addingTimeInterval(duration * Double(index))
+                let content = UNMutableNotificationContent()
+                content.title = alarm.title
+                content.body = alarm.description
+                content.categoryIdentifier = alarm.snoozeEnabled ? Identifier.snoozeAlarmCategoryIndentifier : Identifier.alarmCategoryIndentifier
+                content.sound = UNNotificationSound(named: UNNotificationSoundName("bell.mp3"))
+                content.userInfo = ["snooze": alarm.snoozeEnabled, "uid": alarm.uid, "soundName": "bell"]
+                
+                let timeInterval = fireDate.timeIntervalSince(Date())
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(timeInterval, 1), repeats: false)
+                let identifier = "\(alarm.uid)_\(index)"
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                UNUserNotificationCenter.current().add(request) { error in
+                    if let e = error {
+                        print("[NotificationScheduler] Error scheduling notification \(identifier): \(e.localizedDescription)")
+                    } else {
+                        print("[NotificationScheduler] Scheduled notification \(identifier) for id=\(alarm.uid) at \(fireDate)")
+                    }
                 }
             }
         }
@@ -133,7 +142,13 @@ class NotificationScheduler : NotificationSchedulerDelegate
     }
     
     func cancelNotification(ByUUIDStr uid: String) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [uid])
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let identifiersToCancel = requests.compactMap { req -> String? in
+                guard let rUid = req.content.userInfo["uid"] as? String, rUid == uid else { return nil }
+                return req.identifier
+            }
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToCancel)
+        }
     }
     
     func updateNotification(ByUUIDStr uid: String, date: Date, ringtoneName: String, snoonzeEnabled: Bool) {

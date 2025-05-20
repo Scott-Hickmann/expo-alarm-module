@@ -22,23 +22,33 @@ class Alarm: Codable {
     }
     
     init(dictionary: NSMutableDictionary) {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        // Parses the day which can be a timestamp or ISO date string
+        if let dayValue = dictionary["day"] {
+            if let seconds = dayValue as? TimeInterval {
+                self.date = Date(timeIntervalSince1970: seconds)
+            } else if let dateString = dayValue as? String {
+                var parsedDate: Date?
+                if #available(iOS 10.0, *) {
+                    parsedDate = ISO8601DateFormatter().date(from: dateString)
+                }
+                if parsedDate == nil {
+                    let df = DateFormatter()
+                    df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+                    parsedDate = df.date(from: dateString)
+                }
+                self.date = parsedDate ?? Date()
+            } else {
+                self.date = Date()
+            }
+        } else {
+            self.date = Date()
+        }
         
         self.uid = dictionary["uid"] as? String ?? "";
         self.active = dictionary["active"] as? Bool ?? false;
         self.snoozeEnabled = dictionary["snoozeEnabled"] as? Bool ?? false
         self.title = dictionary["title"] as? String ?? ""
         self.description = dictionary["description"] as? String ?? ""
-        
-        // Converts the Date
-        if let dateString = dictionary["day"] as? String,
-           let date = dateFormatter.date(from: dateString) {
-            self.date = date
-        } else {
-            // Handle the case where the date conversion fails or provide a default value
-            self.date = Date()
-        }
     }
     
     enum CodingKeys: CodingKey {
